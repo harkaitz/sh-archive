@@ -1,0 +1,38 @@
+#!/bin/sh -e
+##:
+#h: Usage: txtrun TXT {cat | sed 'CMD' | grep PATTERN | awk CODE }
+#h:
+#h: Pipe text to command, good for if statements.
+##:
+txtrun() {
+    local txt="$1" patt
+    shift
+    if test @"$1" = @"has"; then
+        shift
+        for patt in "$@"; do
+            if ! grep -q "${patt}" <<-EOF
+		${txt}
+		EOF
+            then
+                return 1
+            fi
+        done
+    elif test ! -n "$1" && test -n "$txt"; then
+        return 0
+    elif "$@" <<-EOF
+	${txt}
+	EOF
+    then
+        return 0
+    else
+        return 1
+    fi
+}
+# --------------------------------------------------------------------
+if test @"${SCRNAME:-$(basename "$0")}" = @"txtrun"; then
+    MSYS_NO_PATHCONV=1
+    case "${1}" in
+        ''|-h|--help) sed -n 's/^ *#h: \{0,1\}//p' "$0";;
+        *)            txtrun "$@"; exit 0;;
+    esac
+fi
