@@ -1,6 +1,6 @@
 #!/bin/sh -e
 ##:
-#h: Usage: lastdown [-t SECS]
+#h: Usage: lastdown [-t SECS] COMMAND...
 #h:
 #h: Print the last downloaded file name. 
 ##:
@@ -32,8 +32,13 @@ lastdown() {
             return 1
         fi
     fi
-    
-    echo "${f}"
+
+    ## Run command.
+    if test -n "$1"; then
+        "$@" "${f}"
+    else
+        echo "${f}"
+    fi
 }
 # --------------------------------------------------------------------
 if test @"${SCRNAME:-$(basename "$0")}" = @"lastdown"; then

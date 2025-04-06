@@ -17,12 +17,11 @@ archive
     machine by running "archive_NAME FILE" scripts in PATH until one
     returns success.
     
-    Environment variables: ARCHIVE_CONFIG
-    Config files: ~/.archive.cfg
+    Config files: ${ARCHIVE_CONFIG:-~/.archive.cfg}
 
 lastdown
 
-    Usage: lastdown [-t SECS]
+    Usage: lastdown [-t SECS] COMMAND...
     
     Print the last downloaded file name. 
 
