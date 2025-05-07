@@ -1,0 +1,49 @@
+#!/bin/sh -e
+##:
+#h: Usage: lastdown [-t SECS] COMMAND...
+#h:
+#h: Print the last downloaded file name. 
+##:
+lastdown() {
+    local OPTIND=1 optopt d f t age=''
+    
+    ## Parse command line arguments.
+    while getopts "t:" optopt; do
+        case $optopt in
+            t)  age="${OPTARG}";;
+            \?) return 1;;
+        esac
+    done
+    shift $(( $OPTIND - 1 ))
+    
+    ## Get file.
+    d="${HOME}/Downloads"
+    f="$(ls -t "${d}" | head -n 1 | sed "s|^|${d}/|")"
+    if test ! -n "${f}"; then
+        echo >&2 "error: Empty download directory."
+        return 1
+    fi
+    
+    ## Check if aged.
+    if test -n "${age}"; then
+        t=$(( $(date +%s) - $(stat -c "%Y" "${f}") ))
+        if test "${t}" -gt "${age}"; then
+            echo >&2 "error: ${f}: Too old, ${t} seconds old > ${age}"
+            return 1
+        fi
+    fi
+
+    ## Run command.
+    if test -n "$1"; then
+        "$@" "${f}"
+    else
+        echo "${f}"
+    fi
+}
+# --------------------------------------------------------------------
+if test @"${SCRNAME:-$(basename "$0")}" = @"lastdown"; then
+    case "${1}" in
+        -h|--help) sed -n 's/^ *#h: \{0,1\}//p' "$0";;
+        *)         lastdown "$@"; exit 0;;
+    esac
+fi

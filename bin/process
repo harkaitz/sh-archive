@@ -1,0 +1,48 @@
+#!/bin/sh -e
+##:
+#h: Usage: process [-l]
+#h:
+#h: Process the files classified by archive(1).
+#h:
+#h: Config files: ${ARCHIVE_CONFIG:-~/.archive.cfg}
+##:
+##: :TOP:
+. runbook
+process() {
+    local OPTIND=1 optopt program ret=0
+    
+    # Parse command line arguments.
+    while getopts "l" optopt; do
+        case $optopt in
+            l)  runbook -p process_ --; return 0;;
+            \?) return 1;;
+        esac
+    done
+    shift $(( $OPTIND - 1 ))
+    
+    # Process documents.
+    for program in $(runbook_programs | sed -n '/^process_/p'); do
+        echo "== Running: ${program}"
+        if ! "${program}"; then
+            ret=1
+        fi
+    done
+
+    #
+    return "${ret}"
+}
+# --------------------------------------------------------------------
+if test ! -n "${ARCHIVE_LOADED}"; then
+    if test -n "${ARCHIVE_CONFIG}"; then
+        . "${ARCHIVE_CONFIG}"
+    elif test -f ~/.archive.cfg; then
+        . ~/.archive.cfg
+    fi
+fi
+if test @"${SCRNAME:-$(basename "$0")}" = @"process"; then
+    MSYS_NO_PATHCONV=1
+    case "${1}" in
+        -h|--help) sed -n 's/^ *#h: \{0,1\}//p' "$0";;
+        *)         process "$@"; exit 0;;
+    esac
+fi

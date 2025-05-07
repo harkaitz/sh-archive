@@ -1,0 +1,97 @@
+#!/bin/sh -e
+##:
+#h: Usage: pdfrun [OPTS...] PDF {cat | sed 'CMD' | grep PATTERN | awk CODE }
+#h:
+#h: Extract text from a pdf file and then execute a command on it.
+#h:
+#h:   -q  Silently quit if the argument is not a PDF file.
+#h:   -f  Force analysis.
+#h:   -c  Use a cache in "/tmp/pdfrun.$USER/" for efficiency.
+##:
+pdfrun() {
+    local OPTIND=1 optopt opt_q= opt_c= opt_f= del= pdf md5 txt ret patt
+    
+    # Parse command line arguments.
+    while getopts "qcf" optopt; do
+        case $optopt in
+            q)  opt_q=y;;
+            c)  opt_c=y;;
+            f)  opt_f=y;;
+            \?) return 1;;
+        esac
+    done
+    shift $(( $OPTIND - 1 ))
+    if test ! -n "$1"; then
+        echo >&2 "error: Please specify a file."
+        return 1
+    fi
+    pdf="$1"
+    shift
+    if ! pdfrun_is_pdf "${pdf}"; then
+        test -n "${opt_q}" || echo >&2 "error: ${pdf}: Not a pdf file."
+        return 1
+    fi
+
+    # Calculate hash.
+    md5="$(md5sum "${pdf}" | sed 's| .*||')"
+    txt="${PDFRUN_DIR}/${md5}.txt"
+
+    # Extract text.
+    if test ! -f "${txt}" || test -n "${opt_f}"; then
+        mkdir -p "${PDFRUN_DIR}"
+        pdftotext -layout "${pdf}" "${txt}.tmp" >&2
+        if test @"$(wc -l < "${txt}.tmp")" = @"0"; then
+            ocrpdf -o "${txt}.tmp" -d 300 "${pdf}" >&2
+        fi
+        mv "${txt}.tmp" "${txt}"
+        del=y
+    fi
+
+    # Execute command.
+    if test ! -n "$1"; then
+        less "${txt}"
+        ret=0
+    elif test @"${1}" = @"has"; then
+        shift
+        ret=0
+        for patt in "$@"; do
+            if ! grep -q "$patt" "${txt}"; then
+                ret=1
+                break
+            fi
+        done
+    elif env "$@" "${txt}"; then
+        ret=0
+    else
+        ret=1
+    fi
+
+    # Cleanup.
+    if test ! -n "${opt_c}" && test -n "${del}"; then
+        rm -f "${txt}"
+    fi
+
+    # Return code.
+    return "${ret}"
+}
+# --------------------------------------------------------------------
+pdfrun_is_pdf() {
+    if test ! -f "$1"; then
+        echo "pdfrun: error: $1: Not found."
+        return 1
+    fi
+    case "${pdf}" in
+        *.pdf|*.PDF|*.Pdf) return 0;;
+        *) return 1;;
+    esac
+}
+# --------------------------------------------------------------------
+PDFRUN_DIR="${PDFRUN_DIR:-${TEMP:-/tmp}/pdfrun.$(whoami)}"
+if test @"${SCRNAME:-$(basename "$0")}" = @"pdfrun"; then
+    MSYS_NO_PATHCONV=1
+    case "${1}" in
+        ''|-h|--help) sed -n 's/^ *#[hl]: \{0,1\}//p' "$0";;
+        -V)           echo "PDFRUN_DIR : ${PDFRUN_DIR}" ;;
+        *)            pdfrun "$@"; exit 0;;
+    esac
+fi

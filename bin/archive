@@ -1,0 +1,65 @@
+#!/bin/sh -e
+##:
+#h: Usage: archive { -l | [-q] FILES... }
+#h:
+#h: This program classifies and stores the specified files into your
+#h: machine by running "archive_NAME FILE" scripts in PATH until one
+#h: returns success.
+#h:
+#h: Config files: ${ARCHIVE_CONFIG:-~/.archive.cfg}
+##:
+##: :TOP:
+. runbook
+archive() {
+    local OPTIND=1 optopt opt_l= file prog verb=y progs found ret=0
+    
+    # Parse command line arguments.
+    while getopts "lq" optopt; do
+        case $optopt in
+            l)  runbook -p archive_ -g; return 0;;
+            q)  verb=;;
+            \?) return 1;;
+        esac
+    done
+    shift $(( $OPTIND - 1 ))
+
+    # List programs.
+    progs="$(runbook_programs | sed -n 's|^archive_||p')"
+
+    # Classify files.
+    for file in "$@"; do
+        found=
+        if test ! -f "${file}"; then
+            echo "archive: error: ${file}: File not found."
+            return 1
+        fi
+        for prog in ${progs}; do
+            if VERBOSE="${verb}" "archive_${prog}" "${file}"; then
+                found=y
+                break
+            fi
+        done
+        if test ! -n "${found}"; then
+            echo "archive: error: ${file}: Can't classify."
+            ret=1
+        fi
+    done
+            
+    #
+    return "$ret"
+}
+# --------------------------------------------------------------------
+if test ! -n "${ARCHIVE_LOADED}"; then
+    if test -n "${ARCHIVE_CONFIG}"; then
+        . "${ARCHIVE_CONFIG}"
+    elif test -f ~/.archive.cfg; then
+        . ~/.archive.cfg
+    fi
+fi
+if test @"${SCRNAME:-$(basename "$0")}" = @"archive"; then
+    MSYS_NO_PATHCONV=1
+    case "${1}" in
+        ''|-h|--help) sed -n 's/^ *#h: \{0,1\}//p' "$0";;
+        *)            archive "$@"; exit 0;;
+    esac
+fi

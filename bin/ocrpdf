@@ -1,0 +1,132 @@
+#!/bin/sh -e
+##:
+#h: Usage: ocrpdf [-o PDF] [-d DPI(500)] [-f FIRST-PAGE] [-l LAST-PAGE] [-c eng|spa] [PDFS...]
+#h:
+#h: Extract text from pdf using OCR (tesseract).
+##:
+ocrpdf() {
+    local OPTIND=1 optopt p ops= output_pdf="-" first= last= language=
+
+    ## Parse command line arguments.
+    while getopts "o:f:l:c:d:" optopt; do
+        ops="${ops}${optopt}"
+        case $optopt in
+            o)  local output_pdf="${OPTARG}" ;;
+            f)  local first="${OPTARG}"      ;;
+            l)  local last="${OPTARG}"       ;;
+            c)  local language="${OPTARG}"   ;;
+            d)  local OCRPDF_DPI="${OPTARG}" ;;
+            \?) return 1;;
+        esac
+    done
+    shift $(( $OPTIND - 1 ))
+    if test ! -n "$1"; then
+        return 0
+    fi
+    ocrpdf_check_dependencies
+
+    ## Cleanup.
+    rm -rf   /tmp/ocrpdf.1 /tmp/ocrpdf.2 /tmp/ocrpdf.3
+    mkdir -p /tmp/ocrpdf.1 /tmp/ocrpdf.2 /tmp/ocrpdf.3
+    
+    ## Split all pages.
+    local num=0
+    for p in "$@"; do
+        ocrpdf_pdfsplit /tmp/ocrpdf.1 "${num}" "${p}" "${first}" "${last}"
+        local num=$(( $num + 1 ))
+    done
+
+    ## Convert to tif
+    for p in $(find /tmp/ocrpdf.1 -iname '*.pdf' | sort -g); do
+        ocrpdf_pdf2tif /tmp/ocrpdf.2 "${p}"
+    done
+    
+    ## OCR to pdf and then join.
+    case "${output_pdf}" in
+        *.pdf|*.PDF)
+            for p in $(find /tmp/ocrpdf.2 -iname '*.tif' | sort -g); do
+                ocrpdf_tif2pdf /tmp/ocrpdf.3 "${p}"
+            done
+            ocrpdf_pdf2tif pdfconcat -o "${output_pdf}" $(find /tmp/ocrpdf.3 -iname '*.pdf' | sort -g)
+            ;;
+        -|*)
+            if test @"${output_pdf}" = @"-"; then
+                output_pdf=/dev/stdout
+            fi
+            for p in $(find /tmp/ocrpdf.2 -iname '*.tif' | sort -g); do
+                ocrpdf_tif2txt /tmp/ocrpdf.3 "${p}"
+            done
+            for p in $(find /tmp/ocrpdf.3 -iname '*.txt' | sort -g); do
+                printf '== %s ============================================\n' "$(basename "$p" .txt)"
+                cat "${p}"
+            done > "${output_pdf}"
+            ;;
+    esac
+}
+ocrpdf_tif2pdf() {
+    local o="${1}/$(basename "${2}" .pdf.tif)" f="${2}"
+    ocrpdf_vrun tesseract ${language:+ -l eng} --dpi "${OCRPDF_DPI}" --psm 4 "${f}" "${o}" pdf 
+}
+ocrpdf_tif2txt() {
+    local o="${1}/$(basename "${2}" .pdf.tif)" f="${2}"
+    ocrpdf_vrun tesseract ${language:+ -l eng} --dpi "${OCRPDF_DPI}" --psm 4 "${f}" "${o}" txt
+}
+ocrpdf_pdf2tif() {
+    local o="${1}/$(basename "${2}").tif" f="$2"
+    ocrpdf_vrun convert  \
+        -density "${OCRPDF_DPI}" \
+        "${f}"           \
+        -colorspace Gray \
+        -quality 100     \
+        -alpha Off       \
+        "${o}"
+}
+ocrpdf_pdfsplit() {
+    local o="$1" n="$2" f="$3" first="$4" last="$5" args=
+    mkdir -p "${o}"
+    if test -n "${first}";then
+        args="${args} -f ${first}"
+    fi
+    if test -n "${last}";then
+        args="${args} -l ${last}"
+    fi
+    ocrpdf_vrun pdfseparate ${args} "${f}" "${o}/${n}-%04d.pdf"
+}
+tesseract_list_langs() {
+    ocrpdf_vrun tesseract --list-langs
+}
+## -------------------------------------------------------------------
+ocrpdf_check_dependencies() {
+    local ret=0
+    if ! which tesseract >/dev/null 2>&1; then
+        echo >&2 "error: tesseract: Command not found."
+        ret=1
+    fi
+    if ! which pdfseparate >/dev/null 2>&1; then
+        echo >&2 "error: pdfseparate: Command not found."
+        ret=1
+    fi
+    if ! which convert >/dev/null 2>&1; then
+        echo >&2 "error: convert: Command not found."
+        ret=1
+    fi
+    if ! which pdfconcat >/dev/null 2>&1; then
+        echo >&2 "error: pdfconcat: Command not found (xpaint)."
+        ret=1
+    fi
+    return "${ret}"
+}
+ocrpdf_vrun() {
+    if test -n "${VERBOSE}"; then
+        echo "$*" >&2
+    fi
+    "$@"
+}
+## -------------------------------------------------------------------
+OCRPDF_DPI="500"
+if test @"$(basename "$0")" = @"ocrpdf";then
+    case "${1}" in
+        ''|-h|--help) sed -n 's/^ *#h: \{0,1\}//p' "$0" ;;
+        *)            ocrpdf "$@"; exit 0;;
+    esac
+fi
